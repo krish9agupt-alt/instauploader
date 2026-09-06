@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Insta Reel Studio Pro", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Studio Pro (Date-Wise Schedule History)")
+st.title("⚡ Instagram Reel Studio Pro (Fixed Session State)")
 
 # --- 1. SESSION MANAGEMENT ---
 st.header("🔑 Instagram Connection")
@@ -41,6 +41,9 @@ if "uploaded_files" not in st.session_state:
 
 if "last_media_pk" not in st.session_state:
     st.session_state.last_media_pk = None
+
+if "file_queue" not in st.session_state:
+    st.session_state.file_queue = []
 
 
 def add_log(slot, status, details):
@@ -186,22 +189,24 @@ with tab2:
     )
 
     raw_list = [line.strip() for line in manual_links_input.split("\n") if line.strip()]
-    file_queue = []
-    for item in raw_list:
-        m = re.search(r"/d/([a-zA-Z0-9_-]+)", item)
-        if m:
-            file_queue.append(m.group(1))
-        elif len(item) > 15:
-            file_queue.append(item)
+    if raw_list:
+        temp_queue = []
+        for item in raw_list:
+            m = re.search(r"/d/([a-zA-Z0-9_-]+)", item)
+            if m:
+                temp_queue.append(m.group(1))
+            elif len(item) > 15:
+                temp_queue.append(item)
+        st.session_state.file_queue = temp_queue
 
-    st.info(f"📂 Total Videos Loaded in Queue: **{len(file_queue)}** videos.")
+    st.info(f"📂 Total Videos Loaded in Queue: **{len(st.session_state.file_queue)}** videos.")
 
     def process_bulk_slot_upload(slot_index):
-        if not file_queue:
+        if not st.session_state.file_queue:
             add_log(f"Slot {slot_index+1}", "Skipped", "Queue empty")
             return
 
-        available_ids = [fid for fid in file_queue if fid not in st.session_state.uploaded_files]
+        available_ids = [fid for fid in st.session_state.file_queue if fid not in st.session_state.uploaded_files]
         if not available_ids:
             add_log(f"Slot {slot_index+1}", "Skipped", "All queue videos uploaded!")
             return
@@ -259,10 +264,10 @@ with tab2:
 with tab3:
     st.header("📅 Date-Wise Automatic Schedule Forecast")
 
-    if not file_queue:
+    if not st.session_state.file_queue:
         st.warning("Pehle Tab 2 me videos ke links paste karein taaki schedule mapping calculate ho sake.")
     else:
-        total_videos = len(file_queue)
+        total_videos = len(st.session_state.file_queue)
         days_required = (total_videos + 7) // 8
         start_date = datetime.now().date()
         end_date = start_date + timedelta(days=days_required - 1)
@@ -278,9 +283,8 @@ with tab3:
         curr_date = start_date
         slot_idx = 0
 
-        for i, fid in enumerate(file_queue):
+        for i, fid in enumerate(st.session_state.file_queue):
             slot_time = TIME_SLOTS[slot_idx]
-            scheduled_datetime = f"{curr_date.strftime('%Y-%m-%d')} | {slot_time}"
 
             schedule_data.append(
                 {
