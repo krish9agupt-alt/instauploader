@@ -1,10 +1,6 @@
 streamlit
-instagrapi>=2.1.2
+instagrapi
 requests
-pillow
-pydantic
 schedule
 pandas
-moviepy==2.2.1
-imageio-ffmpeg
-instagrapi[video]
+moviepy==1.0.3
