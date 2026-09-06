@@ -14,23 +14,26 @@ st.set_page_config(
 
 st.title("⚡ Instagram Reel Uploader & Auto Scheduler")
 
-# --- 1. FIXED INLINE LOGIN & SETTINGS ---
+# --- 1. INLINE LOGIN & SESSION MANAGEMENT ---
 st.header("🔑 Instagram Login & Settings")
 
-if "IG_USERNAME" in st.secrets and "IG_PASSWORD" in st.secrets:
+if "IG_USERNAME" in st.secrets and "IG_SESSIONID" in st.secrets:
     ig_username = st.secrets["IG_USERNAME"]
-    ig_password = st.secrets["IG_PASSWORD"]
-    st.success("✅ Logged in automatically via Streamlit Secrets!")
+    ig_sessionid = st.secrets["IG_SESSIONID"]
+    ig_password = None
+    st.success("✅ Logged in safely via Session ID (Bypassed IP Block)!")
 else:
     col_user, col_pass = st.columns(2)
     with col_user:
         ig_username = st.text_input("Instagram Username")
     with col_pass:
-        ig_password = st.text_input("Instagram Password", type="password")
+        ig_password = st.text_input(
+            "Instagram Password (or Session ID)", type="password"
+        )
+    ig_sessionid = None
 
 st.divider()
 
-# --- HELPER FUNCTIONS ---
 if "logs" not in st.session_state:
     st.session_state.logs = []
 
@@ -47,14 +50,21 @@ def add_log(slot, status, details):
 
 
 def get_instagram_client():
-    if not ig_username or not ig_password:
-        return None
     cl = Client()
-    # Spoof Android User-Agent to prevent Streamlit Cloud IP blocking
     cl.set_user_agent(
         "Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; Xiaomi; Redmi Note 5; vince; qcom; en_US; 314665270)"
     )
-    cl.login(ig_username, ig_password)
+
+    if ig_sessionid:
+        cl.login_by_sessionid(ig_sessionid)
+    elif ig_username and ig_password:
+        if len(ig_password) > 30 and "%" in ig_password:
+            cl.login_by_sessionid(ig_password)
+        else:
+            cl.login(ig_username, ig_password)
+    else:
+        raise Exception("Login credentials missing!")
+
     return cl
 
 
@@ -105,8 +115,6 @@ with tab1:
     if st.button("🚀 Upload Single Reel Now", use_container_width=True):
         if not single_file:
             st.error("Pehle video file select karein!")
-        elif not ig_username or not ig_password:
-            st.error("Instagram username aur password bharein!")
         else:
             temp_path = f"temp_{single_file.name}"
             with open(temp_path, "wb") as f:
@@ -194,59 +202,49 @@ with tab2:
     start_auto = st.checkbox("🚀 Activate Daily 8-Reels Schedule Engine")
 
     if start_auto:
-        if not ig_username or not ig_password:
-            st.error("Instagram Credentials missing!")
-        else:
-            st.info("Automation Running. Schedule active for 8 fixed slots...")
-            schedule.clear()
-            for idx, time_slot in enumerate(TIME_SLOTS):
-                schedule.every().day.at(time_slot).do(
-                    process_slot_upload, idx
-                )
+        st.info("Automation Running. Schedule active for 8 fixed slots...")
+        schedule.clear()
+        for idx, time_slot in enumerate(TIME_SLOTS):
+            schedule.every().day.at(time_slot).do(process_slot_upload, idx)
 
-            while start_auto:
-                schedule.run_pending()
-                time.sleep(30)
+        while start_auto:
+            schedule.run_pending()
+            time.sleep(30)
 
 # --- TAB 3: ANALYTICS DASHBOARD ---
 with tab3:
     st.header("📊 Smart Performance Analytics")
     if st.button("🔄 Sync Instagram Data"):
-        if not ig_username or not ig_password:
-            st.error("Login details missing!")
-        else:
-            with st.spinner("Fetching profile analytics..."):
-                try:
-                    cl = get_instagram_client()
-                    medias = cl.user_medias(cl.user_id, amount=10)
-                    analytics_data = []
+        with st.spinner("Fetching profile analytics..."):
+            try:
+                cl = get_instagram_client()
+                medias = cl.user_medias(cl.user_id, amount=10)
+                analytics_data = []
 
-                    for m in medias:
-                        if m.media_type == 2:
-                            views = (
-                                m.play_count
-                                if hasattr(m, "play_count") and m.play_count
-                                else 0
-                            )
-                            analytics_data.append(
-                                {
-                                    "Date": m.taken_at.strftime(
-                                        "%Y-%m-%d %H:%M"
-                                    ),
-                                    "Views": views,
-                                    "Likes": m.like_count,
-                                    "Comments": m.comment_count,
-                                }
-                            )
+                for m in medias:
+                    if m.media_type == 2:
+                        views = (
+                            m.play_count
+                            if hasattr(m, "play_count") and m.play_count
+                            else 0
+                        )
+                        analytics_data.append(
+                            {
+                                "Date": m.taken_at.strftime("%Y-%m-%d %H:%M"),
+                                "Views": views,
+                                "Likes": m.like_count,
+                                "Comments": m.comment_count,
+                            }
+                        )
 
-                    if analytics_data:
-                        df = pd.DataFrame(analytics_data)
-                        st.dataframe(df, use_container_width=True)
-                        st.bar_chart(df, x="Date", y="Views")
-                    else:
-                        st.warning("No Video Reels found.")
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                if analytics_data:
+                    df = pd.DataFrame(analytics_data)
+                    st.dataframe(df, use_container_width=True)
+                    st.bar_chart(df, x="Date", y="Views")
+                else:
+                    st.warning("No Video Reels found.")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
 # --- TAB 4: ACTIVITY LOGS ---
 with tab4:
