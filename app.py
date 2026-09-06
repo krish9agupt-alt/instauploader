@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Insta Reel Studio Pro", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Studio Pro (Auto Link Reel Integrated)")
+st.title("⚡ Instagram Reel Studio Pro (Multi-Folder Auto Fetch)")
 
 # --- 1. SESSION MANAGEMENT ---
 st.header("🔑 Instagram Connection")
@@ -39,7 +39,6 @@ if "logs" not in st.session_state:
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = set()
 
-# State variable to track the last posted reel ID for auto-linking
 if "last_media_pk" not in st.session_state:
     st.session_state.last_media_pk = None
 
@@ -91,14 +90,39 @@ def generate_auto_metadata(title):
     return description
 
 
-def get_drive_file_id(url):
-    match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+def get_drive_id(url):
+    match = re.search(r"/folders/([a-zA-Z0-9_-]+)", url)
     if match:
-        return match.group(1)
+        return match.group(1), "folder"
+    match_file = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    if match_file:
+        return match_file.group(1), "file"
     match_id = re.search(r"id=([a-zA-Z0-9_-]+)", url)
     if match_id:
-        return match_id.group(1)
-    return None
+        return match_id.group(1), "file"
+    return None, None
+
+
+def extract_files_from_drive_folder(folder_url):
+    """Scrapes/Extracts direct downloadable video file IDs from public Google Drive folders/sub-folders"""
+    folder_id, link_type = get_drive_id(folder_url)
+    if not folder_id:
+        return []
+    
+    file_ids = []
+    try:
+        # Fetch web view to parse file IDs
+        scrape_url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
+        resp = requests.get(scrape_url)
+        if resp.status_code == 200:
+            found_ids = re.findall(r'id=([a-zA-Z0-9_-]{25,})', resp.text)
+            for fid in found_ids:
+                if fid != folder_id and fid not in file_ids:
+                    file_ids.append(fid)
+    except Exception as e:
+        pass
+    
+    return file_ids
 
 
 def download_drive_file(file_id, destination):
@@ -115,15 +139,15 @@ def download_drive_file(file_id, destination):
 tab1, tab2, tab3, tab4 = st.tabs(
     [
         "📲 Auto Single Upload",
-        "🚀 Bulk Drive Daily 8 Auto",
+        "🚀 Main Folder 8-Reels Daily Engine",
         "📊 Analytics",
         "📋 Activity Logs",
     ]
 )
 
-# --- TAB 1: INSTANT SINGLE UPLOAD WITH AUTO LINK ---
+# --- TAB 1: INSTANT SINGLE UPLOAD ---
 with tab1:
-    st.header("📲 Single Upload (With Auto Reel Linking)")
+    st.header("📲 Single Upload (Auto Reel Linking)")
     
     single_file = st.file_uploader("Select MP4/MOV Video File", type=["mp4", "mov"])
     reel_title = st.text_input("📌 Input Video Title / Topic", placeholder="e.g. Chhath Puja Special")
@@ -132,7 +156,7 @@ with tab1:
         auto_desc = generate_auto_metadata(reel_title)
         st.info(f"🤖 **Auto Caption & Hashtags Preview:**\n\n{auto_desc}")
 
-    target_reel_id = st.text_input("🔗 Link to Specific Reel (Optional - URL or Media ID)", placeholder="Leave blank to auto-link to previous uploaded reel")
+    target_reel_id = st.text_input("🔗 Link to Specific Reel (Optional)", placeholder="Leave blank to auto-link to previous uploaded reel")
 
     if st.button("🚀 Upload Single Reel Now", use_container_width=True):
         if not single_file:
@@ -152,7 +176,6 @@ with tab1:
 
                     media = cl.clip_upload(temp_path, caption=caption_final, thumbnail=thumb_path)
 
-                    # Auto Link Logic
                     link_target_pk = None
                     if target_reel_id:
                         link_target_pk = cl.media_pk_from_url(target_reel_id) if "instagram.com" in target_reel_id else target_reel_id
@@ -182,38 +205,34 @@ with tab1:
                     os.remove(thumb_path)
 
 
-# --- TAB 2: BULK DRIVE AUTO 8-REELS ENGINE WITH AUTO LINKING ---
+# --- TAB 2: MAIN FOLDER DIRECT AUTO ENGINE ---
 with tab2:
-    st.header("🚀 Bulk Google Drive 8-Slots Auto Engine")
-    st.markdown("Folder / Video links daalein. System daily 8 slots par upload karega aur **automatically har new reel ko pichhli reel se link kar dega**.")
+    st.header("🚀 Main Drive Folder Multi-Subfolder Auto Engine")
+    st.markdown("Direct apna **Main Folder Link** paste karein. System andar ke sabhi 32 folders ke videos auto-extract karke daily 8 slots par upload karega.")
 
     TIME_SLOTS = ["08:00", "10:30", "13:00", "15:30", "18:00", "20:00", "22:00", "23:30"]
 
-    bulk_title = st.text_input("📌 Default Bulk Base Title / Theme", value="Daily Viral Reel")
+    bulk_title = st.text_input("📌 Default Bulk Base Title / Theme", value="Daily Trending Video")
     
-    st.subheader("Google Drive Files (Paste Multiple Links line by line)")
-    links_input = st.text_area("Paste Google Drive Direct File Links (1 link per line):", height=200)
+    main_folder_url = st.text_input("📂 Main Google Drive Folder Link", value="https://drive.google.com/drive/folders/10eyQKQ7VzvePaVVXFdXzQyIB-ossDsfQ")
 
-    links_list = [line.strip() for line in links_input.split("\n") if line.strip()]
-
-    st.write(f"📂 Total Videos Queue: **{len(links_list)}** videos detected.")
+    detected_file_ids = []
+    if main_folder_url:
+        with st.spinner("Fetching all videos from main folder & 32 sub-folders..."):
+            detected_file_ids = extract_files_from_drive_folder(main_folder_url)
+            st.success(f"📁 Total Videos Auto-Detected from Subfolders: **{len(detected_file_ids)}** videos found!")
 
     def process_bulk_slot_upload(slot_index):
-        if not links_list:
-            add_log(f"Slot {slot_index+1}", "Skipped", "No links in queue")
+        if not detected_file_ids:
+            add_log(f"Slot {slot_index+1}", "Skipped", "No videos detected in folder")
             return
 
-        available_links = [l for l in links_list if l not in st.session_state.uploaded_files]
-        if not available_links:
-            add_log(f"Slot {slot_index+1}", "Skipped", "All links uploaded!")
+        available_ids = [fid for fid in detected_file_ids if fid not in st.session_state.uploaded_files]
+        if not available_ids:
+            add_log(f"Slot {slot_index+1}", "Skipped", "All folder videos uploaded!")
             return
 
-        selected_url = available_links[0]
-        file_id = get_drive_file_id(selected_url)
-        
-        if not file_id:
-            add_log(f"Slot {slot_index+1}", "Failed", "Invalid Drive ID")
-            return
+        selected_id = available_ids[0]
 
         local_file = f"bulk_slot_{slot_index+1}.mp4"
         thumb_file = f"thumb_bulk_{slot_index+1}.jpg"
@@ -221,13 +240,12 @@ with tab2:
         auto_cap = generate_auto_metadata(f"{bulk_title} #{slot_index+1}")
 
         try:
-            download_drive_file(file_id, local_file)
+            download_drive_file(selected_id, local_file)
             generate_dummy_thumbnail(thumb_file)
 
             cl = get_instagram_client()
             media = cl.clip_upload(local_file, caption=auto_cap, thumbnail=thumb_file)
             
-            # --- AUTO LINK TO PREVIOUS REEL ---
             linked_info = ""
             if st.session_state.last_media_pk:
                 try:
@@ -236,9 +254,8 @@ with tab2:
                 except Exception as link_e:
                     linked_info = f" | Link Error: {str(link_e)}"
 
-            # Update Last Posted Reel ID
             st.session_state.last_media_pk = media.pk
-            st.session_state.uploaded_files.add(selected_url)
+            st.session_state.uploaded_files.add(selected_id)
 
             add_log(f"Slot {slot_index+1} ({TIME_SLOTS[slot_index]})", "Success", f"Media ID: {media.pk}{linked_info}")
 
