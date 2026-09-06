@@ -9,12 +9,12 @@ import schedule
 import streamlit as st
 
 st.set_page_config(
-    page_title="Insta Reel Bulk Studio", page_icon="⚡", layout="wide"
+    page_title="Insta Reel Studio", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Automation Studio")
+st.title("⚡ Instagram Reel Uploader & Auto Scheduler")
 
-# --- 1. FIXED INLINE LOGIN & SETTINGS (NO SLIDE MENU) ---
+# --- 1. FIXED INLINE LOGIN & SETTINGS ---
 st.header("🔑 Instagram Login & Settings")
 
 if "IG_USERNAME" in st.secrets and "IG_PASSWORD" in st.secrets:
@@ -50,14 +50,21 @@ def get_instagram_client():
     if not ig_username or not ig_password:
         return None
     cl = Client()
+    # Spoof Android User-Agent to prevent Streamlit Cloud IP blocking
+    cl.set_user_agent(
+        "Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; Xiaomi; Redmi Note 5; vince; qcom; en_US; 314665270)"
+    )
     cl.login(ig_username, ig_password)
     return cl
 
 
-def get_drive_folder_id(url):
-    match = re.search(r"folders/([a-zA-Z0-9_-]+)", url)
+def get_drive_file_id(url):
+    match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
     if match:
         return match.group(1)
+    match_id = re.search(r"id=([a-zA-Z0-9_-]+)", url)
+    if match_id:
+        return match_id.group(1)
     return None
 
 
@@ -74,14 +81,60 @@ def download_drive_file(file_id, destination):
 
 
 # --- NAVIGATION TABS ---
-tab1, tab2, tab3 = st.tabs(
-    ["📁 Drive Bulk 8-Reels Auto", "📊 Analytics Dashboard", "📋 Activity Logs"]
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "📲 Instant Single Upload",
+        "⏰ Daily 8-Reels Auto",
+        "📊 Analytics Dashboard",
+        "📋 Activity Logs",
+    ]
 )
 
-# --- TAB 1: DRIVE BULK AUTOMATION ---
+# --- TAB 1: INSTANT SINGLE UPLOAD ---
 with tab1:
-    st.header("📁 Bulk Drive Folder Auto Sync")
-    st.caption("Drive Folder Link paste karein jahan saare Videos hain.")
+    st.header("📲 Upload Single Reel Immediately")
+    single_file = st.file_uploader(
+        "Select MP4/MOV Video File", type=["mp4", "mov"], key="single_file_input"
+    )
+    single_caption = st.text_area(
+        "Caption & Hashtags",
+        placeholder="Write caption for single video...",
+        key="single_cap",
+    )
+
+    if st.button("🚀 Upload Single Reel Now", use_container_width=True):
+        if not single_file:
+            st.error("Pehle video file select karein!")
+        elif not ig_username or not ig_password:
+            st.error("Instagram username aur password bharein!")
+        else:
+            temp_path = f"temp_{single_file.name}"
+            with open(temp_path, "wb") as f:
+                f.write(single_file.getbuffer())
+
+            try:
+                with st.spinner("Logging in & Uploading..."):
+                    cl = get_instagram_client()
+                    media = cl.clip_upload(temp_path, caption=single_caption)
+                    st.balloons()
+                    st.success(
+                        f"🎉 Single Reel Uploaded! Media ID: {media.pk}"
+                    )
+                    add_log(
+                        "Single Upload",
+                        "Success",
+                        f"Media ID: {media.pk}",
+                    )
+            except Exception as e:
+                st.error(f"Error aaya: {str(e)}")
+                add_log("Single Upload", "Failed", str(e))
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+# --- TAB 2: DAILY 8-SLOT AUTOMATION ---
+with tab2:
+    st.header("⏰ Daily 8-Slots Auto Scheduler (Google Drive)")
 
     TIME_SLOTS = [
         "08:00",
@@ -94,23 +147,21 @@ with tab1:
         "23:30",
     ]
 
-    drive_folder_url = st.text_input(
-        "Google Drive Public Folder URL",
-        placeholder="https://drive.google.com/drive/folders/...",
-    )
     auto_caption = st.text_area(
-        "Reels Caption & Hashtags",
+        "Common Captions for All 8 Reels",
         value="#reels #viral #trending #explore #foryou",
+        key="auto_cap",
     )
 
-    # Individual Drive Links option as fallback
-    st.subheader("Or Set Individual 8 Links")
+    st.subheader("Google Drive Links for 8 Slots")
     drive_urls = []
     cols = st.columns(4)
     for i, slot in enumerate(TIME_SLOTS):
         col_idx = i % 4
         with cols[col_idx]:
-            url = st.text_input(f"Slot {i+1} ({slot})", key=f"slot_url_{i}")
+            url = st.text_input(
+                f"Slot {i+1} ({slot}) Drive URL", key=f"slot_url_{i}"
+            )
             drive_urls.append(url)
 
     def process_slot_upload(slot_index):
@@ -118,11 +169,7 @@ with tab1:
         if not url:
             return
 
-        file_id = None
-        match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
-        if match:
-            file_id = match.group(1)
-
+        file_id = get_drive_file_id(url)
         if not file_id:
             add_log(f"Slot {slot_index+1}", "Failed", "Invalid Link")
             return
@@ -148,7 +195,7 @@ with tab1:
 
     if start_auto:
         if not ig_username or not ig_password:
-            st.error("Please provide Instagram Username and Password!")
+            st.error("Instagram Credentials missing!")
         else:
             st.info("Automation Running. Schedule active for 8 fixed slots...")
             schedule.clear()
@@ -161,8 +208,8 @@ with tab1:
                 schedule.run_pending()
                 time.sleep(30)
 
-# --- TAB 2: ANALYTICS DASHBOARD ---
-with tab2:
+# --- TAB 3: ANALYTICS DASHBOARD ---
+with tab3:
     st.header("📊 Smart Performance Analytics")
     if st.button("🔄 Sync Instagram Data"):
         if not ig_username or not ig_password:
@@ -201,8 +248,8 @@ with tab2:
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
 
-# --- TAB 3: ACTIVITY LOGS ---
-with tab3:
+# --- TAB 4: ACTIVITY LOGS ---
+with tab4:
     st.header("📋 Execution Activity Logs")
     if st.session_state.logs:
         st.dataframe(
