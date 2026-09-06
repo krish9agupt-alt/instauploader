@@ -1,7 +1,6 @@
 streamlit
-instagrapi>=2.1.2
+instagrapi
 requests
-pillow
-pydantic
 schedule
 pandas
+
