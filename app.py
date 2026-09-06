@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Insta Reel Studio", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Uploader & Auto Scheduler")
+st.title("⚡ Instagram Reel Uploader & Advanced Auto Scheduler")
 
 # --- 1. INLINE LOGIN & SESSION MANAGEMENT ---
 st.header("🔑 Instagram Login & Settings")
@@ -70,7 +70,6 @@ def get_instagram_client():
 
 
 def generate_dummy_thumbnail(output_path="thumb.jpg"):
-    # Generate a simple blank thumbnail image to bypass MoviePy dependency
     img = Image.new("RGB", (720, 1280), color=(0, 0, 0))
     img.save(output_path)
     return output_path
@@ -101,23 +100,42 @@ def download_drive_file(file_id, destination):
 # --- NAVIGATION TABS ---
 tab1, tab2, tab3, tab4 = st.tabs(
     [
-        "📲 Instant Single Upload",
+        "📲 Advanced Instant Upload",
         "⏰ Daily 8-Reels Auto",
         "📊 Analytics Dashboard",
         "📋 Activity Logs",
     ]
 )
 
-# --- TAB 1: INSTANT SINGLE UPLOAD ---
+# --- TAB 1: INSTANT UPLOAD WITH LINK REEL & ADVANCED CAPTION ---
 with tab1:
-    st.header("📲 Upload Single Reel Immediately")
+    st.header("📲 Upload Reel with Title, Hashtags & Linked Reel")
+
     single_file = st.file_uploader(
         "Select MP4/MOV Video File", type=["mp4", "mov"], key="single_file_input"
     )
+
+    col_title, col_tags = st.columns(2)
+    with col_title:
+        reel_title = st.text_input(
+            "📌 Reel Title / Hook", placeholder="e.g. Best 5 Tips for Growth!"
+        )
+    with col_tags:
+        hashtags_input = st.text_input(
+            "#️⃣ Auto Hashtags",
+            value="#reels #viral #trending #explore #foryou",
+        )
+
     single_caption = st.text_area(
-        "Caption & Hashtags",
-        placeholder="Write caption for single video...",
+        "📝 Caption Body",
+        placeholder="Write detail caption here...",
         key="single_cap",
+    )
+
+    st.subheader("🔗 Optional Features")
+    target_reel_id = st.text_input(
+        "🎬 Link a Reel (URL or Media ID of previous Reel)",
+        placeholder="https://www.instagram.com/reel/Cxxxxxx/ or Media ID",
     )
 
     if st.button("🚀 Upload Single Reel Now", use_container_width=True):
@@ -129,26 +147,46 @@ with tab1:
             with open(temp_path, "wb") as f:
                 f.write(single_file.getbuffer())
 
-            try:
-                with st.spinner("Logging in & Uploading..."):
-                    # Generate explicit thumbnail to skip MoviePy auto-generation
-                    generate_dummy_thumbnail(thumb_path)
+            # Format Auto Title + Caption + Hashtags
+            full_caption = f"{reel_title}\n\n{single_caption}\n\n{hashtags_input}".strip()
 
+            try:
+                with st.spinner("Logging in & Uploading Reel..."):
+                    generate_dummy_thumbnail(thumb_path)
                     cl = get_instagram_client()
+
+                    # 1. Upload Video
                     media = cl.clip_upload(
                         temp_path,
-                        caption=single_caption,
+                        caption=full_caption,
                         thumbnail=thumb_path,
                     )
+
+                    # 2. Link Reel Feature (If provided)
+                    linked_msg = ""
+                    if target_reel_id:
+                        try:
+                            # Extract media pk/id if full URL passed
+                            if "instagram.com" in target_reel_id:
+                                target_pk = cl.media_pk_from_url(target_reel_id)
+                            else:
+                                target_pk = target_reel_id
+
+                            cl.media_link_reel(media.pk, target_pk)
+                            linked_msg = " & Linked to target Reel successfully!"
+                        except Exception as link_err:
+                            linked_msg = f" (Media posted, but Reel link failed: {str(link_err)})"
+
                     st.balloons()
                     st.success(
-                        f"🎉 Single Reel Uploaded! Media ID: {media.pk}"
+                        f"🎉 Reel Uploaded Successfully! Media ID: {media.pk}{linked_msg}"
                     )
                     add_log(
                         "Single Upload",
                         "Success",
-                        f"Media ID: {media.pk}",
+                        f"Media ID: {media.pk}{linked_msg}",
                     )
+
             except Exception as e:
                 st.error(f"Error aaya: {str(e)}")
                 add_log("Single Upload", "Failed", str(e))
@@ -173,10 +211,15 @@ with tab2:
         "23:30",
     ]
 
-    auto_caption = st.text_area(
-        "Common Captions for All 8 Reels",
-        value="#reels #viral #trending #explore #foryou",
-        key="auto_cap",
+    auto_title = st.text_input(
+        "Default Title/Hook", value="🔥 Watch till the end!"
+    )
+    auto_caption_body = st.text_area(
+        "Default Description",
+        value="Follow us for daily videos & update!",
+    )
+    auto_hashtags = st.text_input(
+        "Auto Hashtags", value="#reels #viral #trending #explore #foryou"
     )
 
     st.subheader("Google Drive Links for 8 Slots")
@@ -202,13 +245,16 @@ with tab2:
 
         local_file = f"slot_{slot_index+1}.mp4"
         thumb_file = f"thumb_slot_{slot_index+1}.jpg"
+
+        full_auto_caption = f"{auto_title}\n\n{auto_caption_body}\n\n{auto_hashtags}".strip()
+
         try:
             download_drive_file(file_id, local_file)
             generate_dummy_thumbnail(thumb_file)
 
             cl = get_instagram_client()
             media = cl.clip_upload(
-                local_file, caption=auto_caption, thumbnail=thumb_file
+                local_file, caption=full_auto_caption, thumbnail=thumb_file
             )
             add_log(
                 f"Slot {slot_index+1}",
