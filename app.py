@@ -3,6 +3,7 @@ import re
 import time
 from datetime import datetime
 from instagrapi import Client
+from PIL import Image
 import pandas as pd
 import requests
 import schedule
@@ -68,6 +69,13 @@ def get_instagram_client():
     return cl
 
 
+def generate_dummy_thumbnail(output_path="thumb.jpg"):
+    # Generate a simple blank thumbnail image to bypass MoviePy dependency
+    img = Image.new("RGB", (720, 1280), color=(0, 0, 0))
+    img.save(output_path)
+    return output_path
+
+
 def get_drive_file_id(url):
     match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
     if match:
@@ -117,13 +125,21 @@ with tab1:
             st.error("Pehle video file select karein!")
         else:
             temp_path = f"temp_{single_file.name}"
+            thumb_path = f"thumb_{single_file.name}.jpg"
             with open(temp_path, "wb") as f:
                 f.write(single_file.getbuffer())
 
             try:
                 with st.spinner("Logging in & Uploading..."):
+                    # Generate explicit thumbnail to skip MoviePy auto-generation
+                    generate_dummy_thumbnail(thumb_path)
+
                     cl = get_instagram_client()
-                    media = cl.clip_upload(temp_path, caption=single_caption)
+                    media = cl.clip_upload(
+                        temp_path,
+                        caption=single_caption,
+                        thumbnail=thumb_path,
+                    )
                     st.balloons()
                     st.success(
                         f"🎉 Single Reel Uploaded! Media ID: {media.pk}"
@@ -139,6 +155,8 @@ with tab1:
             finally:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
+                if os.path.exists(thumb_path):
+                    os.remove(thumb_path)
 
 # --- TAB 2: DAILY 8-SLOT AUTOMATION ---
 with tab2:
@@ -183,10 +201,15 @@ with tab2:
             return
 
         local_file = f"slot_{slot_index+1}.mp4"
+        thumb_file = f"thumb_slot_{slot_index+1}.jpg"
         try:
             download_drive_file(file_id, local_file)
+            generate_dummy_thumbnail(thumb_file)
+
             cl = get_instagram_client()
-            media = cl.clip_upload(local_file, caption=auto_caption)
+            media = cl.clip_upload(
+                local_file, caption=auto_caption, thumbnail=thumb_file
+            )
             add_log(
                 f"Slot {slot_index+1}",
                 "Success",
@@ -197,6 +220,8 @@ with tab2:
         finally:
             if os.path.exists(local_file):
                 os.remove(local_file)
+            if os.path.exists(thumb_file):
+                os.remove(thumb_file)
 
     st.divider()
     start_auto = st.checkbox("🚀 Activate Daily 8-Reels Schedule Engine")
