@@ -1,1 +1,6 @@
-
+streamlit
+instagrapi>=2.1.2
+requests
+pillow
+pydantic
+schedule
