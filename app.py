@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from instagrapi import Client
 from PIL import Image
 import pandas as pd
@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Insta Reel Studio Pro", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Studio Pro (Multi-Folder Auto Fetch)")
+st.title("⚡ Instagram Reel Studio Pro (Date-Wise Schedule History)")
 
 # --- 1. SESSION MANAGEMENT ---
 st.header("🔑 Instagram Connection")
@@ -82,47 +82,12 @@ def generate_dummy_thumbnail(output_path="thumb.jpg"):
 def generate_auto_metadata(title):
     if not title:
         title = "Trending Reel"
-    
+
     clean_title = title.strip()
     hashtags = f"#{clean_title.replace(' ', '')} #reels #viral #trending #explore #foryou #instagramreels"
     description = f"✨ {clean_title} ✨\n\nHope you like this video! Don't forget to Like, Comment, Share & Follow! ❤️🔥\n\n{hashtags}"
-    
+
     return description
-
-
-def get_drive_id(url):
-    match = re.search(r"/folders/([a-zA-Z0-9_-]+)", url)
-    if match:
-        return match.group(1), "folder"
-    match_file = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
-    if match_file:
-        return match_file.group(1), "file"
-    match_id = re.search(r"id=([a-zA-Z0-9_-]+)", url)
-    if match_id:
-        return match_id.group(1), "file"
-    return None, None
-
-
-def extract_files_from_drive_folder(folder_url):
-    """Scrapes/Extracts direct downloadable video file IDs from public Google Drive folders/sub-folders"""
-    folder_id, link_type = get_drive_id(folder_url)
-    if not folder_id:
-        return []
-    
-    file_ids = []
-    try:
-        # Fetch web view to parse file IDs
-        scrape_url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
-        resp = requests.get(scrape_url)
-        if resp.status_code == 200:
-            found_ids = re.findall(r'id=([a-zA-Z0-9_-]{25,})', resp.text)
-            for fid in found_ids:
-                if fid != folder_id and fid not in file_ids:
-                    file_ids.append(fid)
-    except Exception as e:
-        pass
-    
-    return file_ids
 
 
 def download_drive_file(file_id, destination):
@@ -139,19 +104,21 @@ def download_drive_file(file_id, destination):
 tab1, tab2, tab3, tab4 = st.tabs(
     [
         "📲 Auto Single Upload",
-        "🚀 Main Folder 8-Reels Daily Engine",
-        "📊 Analytics",
+        "🚀 Daily 8-Reels Bulk Engine",
+        "📅 Date-Wise Schedule History",
         "📋 Activity Logs",
     ]
 )
 
+TIME_SLOTS = ["08:00", "10:30", "13:00", "15:30", "18:00", "20:00", "22:00", "23:30"]
+
 # --- TAB 1: INSTANT SINGLE UPLOAD ---
 with tab1:
     st.header("📲 Single Upload (Auto Reel Linking)")
-    
+
     single_file = st.file_uploader("Select MP4/MOV Video File", type=["mp4", "mov"])
     reel_title = st.text_input("📌 Input Video Title / Topic", placeholder="e.g. Chhath Puja Special")
-    
+
     if reel_title:
         auto_desc = generate_auto_metadata(reel_title)
         st.info(f"🤖 **Auto Caption & Hashtags Preview:**\n\n{auto_desc}")
@@ -205,31 +172,38 @@ with tab1:
                     os.remove(thumb_path)
 
 
-# --- TAB 2: MAIN FOLDER DIRECT AUTO ENGINE ---
+# --- TAB 2: BULK AUTO ENGINE ---
 with tab2:
-    st.header("🚀 Main Drive Folder Multi-Subfolder Auto Engine")
-    st.markdown("Direct apna **Main Folder Link** paste karein. System andar ke sabhi 32 folders ke videos auto-extract karke daily 8 slots par upload karega.")
+    st.header("🚀 Daily 8-Reels Bulk Engine")
 
-    TIME_SLOTS = ["08:00", "10:30", "13:00", "15:30", "18:00", "20:00", "22:00", "23:30"]
+    bulk_title = st.text_input("📌 Default Bulk Base Title / Theme", value="Daily Trending Reel")
 
-    bulk_title = st.text_input("📌 Default Bulk Base Title / Theme", value="Daily Trending Video")
-    
-    main_folder_url = st.text_input("📂 Main Google Drive Folder Link", value="https://drive.google.com/drive/folders/10eyQKQ7VzvePaVVXFdXzQyIB-ossDsfQ")
+    st.subheader("Paste All Video Drive Links / IDs (Sequence wise starting from Folder 1)")
+    manual_links_input = st.text_area(
+        "Paste Direct Video Share Links / IDs (1 per line):",
+        height=220,
+        placeholder="https://drive.google.com/file/d/1FGhEH4oWDneVunuD8pe...\nhttps://drive.google.com/file/d/2ABhEH4oWDneVunuD8pe...",
+    )
 
-    detected_file_ids = []
-    if main_folder_url:
-        with st.spinner("Fetching all videos from main folder & 32 sub-folders..."):
-            detected_file_ids = extract_files_from_drive_folder(main_folder_url)
-            st.success(f"📁 Total Videos Auto-Detected from Subfolders: **{len(detected_file_ids)}** videos found!")
+    raw_list = [line.strip() for line in manual_links_input.split("\n") if line.strip()]
+    file_queue = []
+    for item in raw_list:
+        m = re.search(r"/d/([a-zA-Z0-9_-]+)", item)
+        if m:
+            file_queue.append(m.group(1))
+        elif len(item) > 15:
+            file_queue.append(item)
+
+    st.info(f"📂 Total Videos Loaded in Queue: **{len(file_queue)}** videos.")
 
     def process_bulk_slot_upload(slot_index):
-        if not detected_file_ids:
-            add_log(f"Slot {slot_index+1}", "Skipped", "No videos detected in folder")
+        if not file_queue:
+            add_log(f"Slot {slot_index+1}", "Skipped", "Queue empty")
             return
 
-        available_ids = [fid for fid in detected_file_ids if fid not in st.session_state.uploaded_files]
+        available_ids = [fid for fid in file_queue if fid not in st.session_state.uploaded_files]
         if not available_ids:
-            add_log(f"Slot {slot_index+1}", "Skipped", "All folder videos uploaded!")
+            add_log(f"Slot {slot_index+1}", "Skipped", "All queue videos uploaded!")
             return
 
         selected_id = available_ids[0]
@@ -245,7 +219,7 @@ with tab2:
 
             cl = get_instagram_client()
             media = cl.clip_upload(local_file, caption=auto_cap, thumbnail=thumb_file)
-            
+
             linked_info = ""
             if st.session_state.last_media_pk:
                 try:
@@ -268,10 +242,10 @@ with tab2:
                 os.remove(thumb_file)
 
     st.divider()
-    start_auto = st.checkbox("🚀 Activate Daily 8-Reels Bulk Engine")
+    start_auto = st.checkbox("🚀 Activate Daily 8-Reels Automation Engine")
 
     if start_auto:
-        st.info("Automation Running. Schedule active for 8 fixed slots daily...")
+        st.success("Automation Active! Daily 8-reels upload scheduler running...")
         schedule.clear()
         for idx, time_slot in enumerate(TIME_SLOTS):
             schedule.every().day.at(time_slot).do(process_bulk_slot_upload, idx)
@@ -281,36 +255,50 @@ with tab2:
             time.sleep(30)
 
 
-# --- TAB 3: ANALYTICS DASHBOARD ---
+# --- TAB 3: DATE-WISE SCHEDULE HISTORY ---
 with tab3:
-    st.header("📊 Smart Performance Analytics")
-    if st.button("🔄 Sync Instagram Data"):
-        with st.spinner("Fetching profile analytics..."):
-            try:
-                cl = get_instagram_client()
-                medias = cl.user_medias(cl.user_id, amount=10)
-                analytics_data = []
+    st.header("📅 Date-Wise Automatic Schedule Forecast")
 
-                for m in medias:
-                    if m.media_type == 2:
-                        views = m.play_count if hasattr(m, "play_count") and m.play_count else 0
-                        analytics_data.append(
-                            {
-                                "Date": m.taken_at.strftime("%Y-%m-%d %H:%M"),
-                                "Views": views,
-                                "Likes": m.like_count,
-                                "Comments": m.comment_count,
-                            }
-                        )
+    if not file_queue:
+        st.warning("Pehle Tab 2 me videos ke links paste karein taaki schedule mapping calculate ho sake.")
+    else:
+        total_videos = len(file_queue)
+        days_required = (total_videos + 7) // 8
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=days_required - 1)
 
-                if analytics_data:
-                    df = pd.DataFrame(analytics_data)
-                    st.dataframe(df, use_container_width=True)
-                    st.bar_chart(df, x="Date", y="Views")
-                else:
-                    st.warning("No Video Reels found.")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Videos Queue", f"{total_videos} Videos")
+        c2.metric("Total Active Schedule Days", f"{days_required} Days")
+        c3.metric("Schedule Valid Until", end_date.strftime("%d %b %Y"))
+
+        st.subheader("📋 Date-Wise Execution Schedule History")
+
+        schedule_data = []
+        curr_date = start_date
+        slot_idx = 0
+
+        for i, fid in enumerate(file_queue):
+            slot_time = TIME_SLOTS[slot_idx]
+            scheduled_datetime = f"{curr_date.strftime('%Y-%m-%d')} | {slot_time}"
+
+            schedule_data.append(
+                {
+                    "Video #": i + 1,
+                    "Schedule Date": curr_date.strftime("%d-%m-%Y (%A)"),
+                    "Slot Time": slot_time,
+                    "Drive File ID": fid,
+                    "Status": "Uploaded" if fid in st.session_state.uploaded_files else "Pending Auto-Upload",
+                }
+            )
+
+            slot_idx += 1
+            if slot_idx >= 8:
+                slot_idx = 0
+                curr_date += timedelta(days=1)
+
+        df_sched = pd.DataFrame(schedule_data)
+        st.dataframe(df_sched, use_container_width=True)
 
 
 # --- TAB 4: ACTIVITY LOGS ---
