@@ -13,9 +13,9 @@ st.set_page_config(
     page_title="Insta Reel Studio Pro", page_icon="⚡", layout="wide"
 )
 
-st.title("⚡ Instagram Reel Studio Pro (Fixed Session State)")
+st.title("⚡ Instagram Reel Studio Pro (Full 3,110 Bulk Automation)")
 
-# --- 1. SESSION MANAGEMENT ---
+# --- 1. SESSION MANAGEMENT & STATE INIT ---
 st.header("🔑 Instagram Connection")
 
 if "IG_USERNAME" in st.secrets and "IG_SESSIONID" in st.secrets:
@@ -44,6 +44,9 @@ if "last_media_pk" not in st.session_state:
 
 if "file_queue" not in st.session_state:
     st.session_state.file_queue = []
+
+if "raw_links_text" not in st.session_state:
+    st.session_state.raw_links_text = ""
 
 
 def add_log(slot, status, details):
@@ -182,14 +185,18 @@ with tab2:
     bulk_title = st.text_input("📌 Default Bulk Base Title / Theme", value="Daily Trending Reel")
 
     st.subheader("Paste All Video Drive Links / IDs (Sequence wise starting from Folder 1)")
+    
     manual_links_input = st.text_area(
         "Paste Direct Video Share Links / IDs (1 per line):",
+        value=st.session_state.raw_links_text,
         height=220,
         placeholder="https://drive.google.com/file/d/1FGhEH4oWDneVunuD8pe...\nhttps://drive.google.com/file/d/2ABhEH4oWDneVunuD8pe...",
+        key="bulk_links_area"
     )
 
-    raw_list = [line.strip() for line in manual_links_input.split("\n") if line.strip()]
-    if raw_list:
+    if manual_links_input != st.session_state.raw_links_text:
+        st.session_state.raw_links_text = manual_links_input
+        raw_list = [line.strip() for line in manual_links_input.split("\n") if line.strip()]
         temp_queue = []
         for item in raw_list:
             m = re.search(r"/d/([a-zA-Z0-9_-]+)", item)
