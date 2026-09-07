@@ -1,1 +1,45 @@
+name: Daily 8-Reels Automatic Upload
+
+on:
+  schedule:
+    # Daily 8 slots in UTC Time (IST conversion: UTC + 5:30)
+    - cron: '30 2 * * *'   # 08:00 AM IST
+    - cron: '0 5 * * *'    # 10:30 AM IST
+    - cron: '30 7 * * *'   # 01:00 PM IST
+    - cron: '0 10 * * *'   # 03:30 PM IST
+    - cron: '30 12 * * *'  # 06:00 PM IST
+    - cron: '30 14 * * *'  # 08:00 PM IST
+    - cron: '30 16 * * *'  # 10:00 PM IST
+    - cron: '0 18 * * *'   # 11:30 PM IST
+  workflow_dispatch:      # Manual run option
+
+jobs:
+  upload-reel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Upload Script
+        env:
+          IG_USERNAME: ${{ secrets.IG_USERNAME }}
+          IG_SESSIONID: ${{ secrets.IG_SESSIONID }}
+          REEL_LINKS: ${{ secrets.REEL_LINKS }}
+        run: python main.py
+
+      - name: Save Upload Progress State
+        run: |
+          git config --global user.name 'Reel Bot'
+          git config --global user.email 'bot@github.com'
+          git add uploaded_count.txt || true
+          git commit -m "Auto-update uploaded count state" || true
+          git push || true
 
