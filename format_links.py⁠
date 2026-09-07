@@ -1,1 +1,24 @@
+# File path specify karein
+input_filename = "input_links.txt"
+output_filename = "secrets.toml"
 
+try:
+    # Saare links read karna
+    with open(input_filename, "r", encoding="utf-8") as file:
+        links = file.read().splitlines()
+
+    # Khali lines (empty lines) hatana
+    valid_links = [f'  "{link.strip()}"' for link in links if link.strip()]
+
+    # TOML structure mein join karna
+    toml_content = "reel_links = [\n" + ",\n".join(valid_links) + "\n]\n"
+
+    # Nayi formatted file save karna
+    with open(output_filename, "w", encoding="utf-8") as file:
+        file.write(toml_content)
+
+    print(f"Success! {len(valid_links)} links format ho gaye hain.")
+    print(f"Check karein '{output_filename}' file.")
+
+except FileNotFoundError:
+    print(f"Error: '{input_filename}' file nahi mili. Folder check karein!")
