@@ -5,7 +5,6 @@ output_filename = "secrets.toml"
 
 if not os.path.exists(input_filename):
     print(f"Error: {input_filename} file nahi mili!")
-    # Blank secrets.toml create kar do taaki workflow crash na ho
     with open(output_filename, "w") as f:
         f.write("reel_links = []\n")
 else:
