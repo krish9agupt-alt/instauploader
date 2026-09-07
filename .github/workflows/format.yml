@@ -1,1 +1,28 @@
+name: Format Links
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Run Script
+        run: python format_links.py
+
+      - name: Commit & Push secrets.toml
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add secrets.toml
+          git commit -m "Generated secrets.toml" || exit 0
+          git push
 
