@@ -15,14 +15,9 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Run Script
-        run: python format_links.py
-
-      - name: Commit & Push secrets.toml
+      - name: Run Script & Output
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add secrets.toml
-          git commit -m "Generated secrets.toml" || exit 0
-          git push
+          python format_links.py
+          cat secrets.toml
+
 
