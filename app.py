@@ -17,13 +17,12 @@ st.markdown("""
     <style>
     .main-header { font-size: 2.3rem; font-weight: bold; color: #FF4B4B; margin-bottom: 0px; }
     .sub-text { color: #aaa; font-size: 1.1rem; margin-bottom: 20px; }
-    .slot-card { background-color: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 12px; }
     .stButton>button { width: 100%; border-radius: 5px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-header">🎬 No Copyright Video Studio Pro</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-text">8 Daily Reels Queue with Individual Google Drive Links, Custom Timing, and Completion Status</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-text">Bulk Batch Uploader: Paste 8+ Google Drive Links or Upload Files with Custom Timing</p>', unsafe_allow_html=True)
 
 # ----------------- SIDEBAR: CREDENTIALS -----------------
 st.sidebar.header("🔑 Instagram Credentials")
@@ -71,9 +70,8 @@ if not client:
 else:
     st.sidebar.success(f"✅ {login_status}")
 
-# ----------------- GOOGLE DRIVE HELPERS -----------------
+# ----------------- HELPERS -----------------
 def convert_gdrive_url(url):
-    """Converts a Google Drive share link into a direct download URL."""
     if "drive.google.com" in url and "/file/d/" in url:
         try:
             file_id = url.split("/file/d/")[1].split("/")[0]
@@ -97,93 +95,84 @@ def download_video(url):
         st.error(f"Download failed: {e}")
     return None
 
-# ----------------- SESSION STATE FOR 8 SLOTS -----------------
-if "slot_status" not in st.session_state:
-    st.session_state.slot_status = ["Pending"] * 8
-
 # ----------------- MAIN UI TABS -----------------
-tab1, tab2 = st.tabs(["🎯 8 Daily Reels Slots & Schedule", "📊 Bulk Progress Dashboard"])
+tab1, tab2 = st.tabs(["📦 Bulk Google Drive Links Box", "📤 Direct Multi-File Uploader"])
 
 with tab1:
-    st.subheader("Configure & Upload 8 Individual Reels")
-    st.write("Enter the Google Drive link and pick a custom schedule time for each reel slot.")
-    st.markdown("---")
+    st.subheader("Bulk Google Drive Link Queue")
+    st.write("Neeche diye gaye box me ek sath 8 ya jitne chahein Google Drive links paste karein (har link ek nayi line me hona chahiye).")
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        start_time = st.time_input("Custom Schedule Start Time", time(8, 0))
+    with col_t2:
+        caption_template = st.text_input("Default Caption", value="No Copyright Reel 🚀 #shorts #reels")
 
-    # Render 8 rows dynamically
-    for i in range(8):
-        with st.container():
-            st.markdown(f"<div class='slot-card'><b>Reel Slot #{i+1}</b>", unsafe_allow_html=True)
-            cols = st.columns([3, 1.2, 1.2, 1])
-            
-            with cols[0]:
-                link_val = st.text_input(
-                    f"Google Drive Link #{i+1}", 
-                    key=f"link_{i}", 
-                    placeholder=f"Paste GDrive link for Reel {i+1}",
-                    label_visibility="collapsed"
-                )
-            with cols[1]:
-                default_hour = 8 + (i * 2) if (8 + (i * 2)) < 24 else 23
-                st.time_input(f"Time #{i+1}", time(default_hour, 0), key=f"time_{i}", label_visibility="collapsed")
-            with cols[2]:
-                status = st.session_state.slot_status[i]
-                if status == "Complete":
-                    st.markdown("<p style='color: #4ade80; font-weight: bold; margin-top: 5px;'>✅ Complete</p>", unsafe_allow_html=True)
-                elif status == "Uploading...":
-                    st.markdown("<p style='color: #facc15; font-weight: bold; margin-top: 5px;'>⏳ Uploading...</p>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<p style='color: #94a3b8; margin-top: 5px;'>📌 Pending</p>", unsafe_allow_html=True)
-            with cols[3]:
-                if st.button(f"Upload #{i+1}", key=f"btn_{i}"):
-                    if not client:
-                        st.error("Please login via sidebar first!")
-                    elif not link_val:
-                        st.warning("Please enter a link first!")
+    links_input = st.text_area(
+        "Paste 8+ Google Drive Links (One per line)",
+        height=220,
+        placeholder="https://drive.google.com/file/d/ID_1/view?usp=sharing\nhttps://drive.google.com/file/d/ID_2/view?usp=sharing"
+    )
+
+    if st.button("🚀 Start Batch Upload for All Links"):
+        if not client:
+            st.error("Please login first via sidebar credentials!")
+        else:
+            links = [l.strip() for l in links_input.split("\n") if l.strip()]
+            if not links:
+                st.warning("Please paste at least one Google Drive link!")
+            else:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                total = len(links)
+                
+                for idx, link in enumerate(links):
+                    status_text.text(f"Processing Reel {idx+1} of {total}...")
+                    v_path = download_video(link)
+                    if v_path and os.path.exists(v_path):
+                        try:
+                            caption = f"{caption_template} #{idx+1}"
+                            client.clip_upload(v_path, caption=caption)
+                            st.success(f"✅ Reel #{idx+1} uploaded successfully and marked as Complete!")
+                        except Exception as e:
+                            st.error(f"❌ Failed Reel #{idx+1}: {e}")
+                        finally:
+                            os.remove(v_path)
                     else:
-                        st.session_state.slot_status[i] = "Uploading..."
-                        st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    # Process Upload for any slot triggered
-    for i in range(8):
-        if st.session_state.slot_status[i] == "Uploading...":
-            link_to_process = st.session_state.get(f"link_{i}", "")
-            with st.spinner(f"Downloading and publishing Reel #{i+1} to Instagram..."):
-                video_path = download_video(link_to_process)
-                if video_path and os.path.exists(video_path):
-                    try:
-                        caption = f"No Copyright Daily Reel #{i+1} 🚀 #shorts #reels #viral"
-                        client.clip_upload(video_path, caption=caption)
-                        st.session_state.slot_status[i] = "Complete"
-                        st.success(f"Reel #{i+1} uploaded successfully!")
-                    except Exception as e:
-                        st.error(f"Instagram Upload Error: {e}")
-                        st.session_state.slot_status[i] = "Pending"
-                    finally:
-                        os.remove(video_path)
-                else:
-                    st.error(f"Could not fetch file for Slot #{i+1}. Ensure sharing is set to 'Anyone with the link can view'.")
-                    st.session_state.slot_status[i] = "Pending"
-            st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚀 Process & Upload All Pending Slots"):
-        for i in range(8):
-            if st.session_state.slot_status[i] == "Pending" and st.session_state.get(f"link_{i}", ""):
-                st.session_state.slot_status[i] = "Uploading..."
-        st.rerun()
+                        st.error(f"❌ Could not download Reel #{idx+1} from link.")
+                    progress_bar.progress((idx + 1) / total)
+                
+                status_text.text("🎉 All scheduled reels processed successfully!")
 
 with tab2:
-    st.subheader("Daily Status Overview")
-    completed_count = sum(1 for s in st.session_state.slot_status if s == "Complete")
+    st.subheader("Direct Multi-File Video Upload Box")
+    st.write("Apne computer se ek sath multiple video files (.mp4) select karke upload karein.")
     
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        st.metric("Total Completed Today", f"{completed_count} / 8 Reels")
-    with col_m2:
-        st.metric("Pending Slots", f"{8 - completed_count} Reels")
-        
-    st.markdown("---")
-    if st.button("🔄 Reset All Status to Pending"):
-        st.session_state.slot_status = ["Pending"] * 8
-        st.rerun()
+    uploaded_files = st.file_uploader("Choose Video Files", type=["mp4", "mov"], accept_multiple_files=True)
+    manual_caption = st.text_input("Caption for Uploaded Files", value="Daily Reel 🚀 #reels")
+    
+    if st.button("🚀 Upload All Selected Files"):
+        if not client:
+            st.error("Please login first via sidebar credentials!")
+        elif not uploaded_files:
+            st.warning("Please select at least one video file!")
+        else:
+            total_files = len(uploaded_files)
+            p_bar = st.progress(0)
+            s_text = st.empty()
+            
+            for idx, uploaded_file in enumerate(uploaded_files):
+                s_text.text(f"Uploading file {idx+1} of {total_files}...")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                    tmp.write(uploaded_file.read())
+                    tmp_path = tmp.name
+                try:
+                    client.clip_upload(tmp_path, caption=f"{manual_caption} #{idx+1}")
+                    st.success(f"✅ File #{idx+1} ({uploaded_file.name}) uploaded successfully!")
+                except Exception as e:
+                    st.error(f"❌ Error uploading #{idx+1}: {e}")
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                p_bar.progress((idx + 1) / total_files)
+            s_text.text("🎉 All file uploads completed!")
